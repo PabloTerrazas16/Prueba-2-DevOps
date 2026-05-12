@@ -111,15 +111,16 @@ jobs:
           docker push "$REPO_URI:latest"
           
           echo "uri=$REPO_URI:${{ github.sha }}" >> $GITHUB_OUTPUT
-
+    
+    
   deploy-to-ec2:
     needs: [build-despachos, build-ventas, build-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     env:
-      DESPACHOS_IMG: ${{ needs.build-despachos.outputs.image-uri }}
-      VENTAS_IMG: ${{ needs.build-ventas.outputs.image-uri }}
-      FRONTEND_IMG: ${{ needs.build-frontend.outputs.image-uri }}
+      DESPACHOS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.DESPACHOS_ECR_REPO }}:${{ github.sha }}
+      VENTAS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.VENTAS_ECR_REPO }}:${{ github.sha }}
+      FRONTEND_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.FRONTEND_ECR_REPO }}:${{ github.sha }}
       DEPLOY_METHOD: ${{ secrets.DEPLOY_METHOD }}
     steps:
       - name: Configure AWS Credentials
@@ -141,21 +142,20 @@ jobs:
           echo "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
-
           ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
             
-            sudo docker pull $DESPACHOS_IMG
+            sudo docker pull ${{ env.DESPACHOS_IMG }}
             sudo docker rm -f despachos-api || true
-            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 $DESPACHOS_IMG
+            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}
             
-            sudo docker pull $VENTAS_IMG
+            sudo docker pull ${{ env.VENTAS_IMG }}
             sudo docker rm -f ventas-api || true
-            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 $VENTAS_IMG
+            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}
             
-            sudo docker pull $FRONTEND_IMG
+            sudo docker pull ${{ env.FRONTEND_IMG }}
             sudo docker rm -f frontend || true
-            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 $FRONTEND_IMG
+            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}
             
             sudo docker image prune -f
           EOF
@@ -167,15 +167,15 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters "commands=[
-              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
-              \"sudo docker pull $DESPACHOS_IMG\",
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
+              \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
               \"sudo docker rm -f despachos-api || true\",
-              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 $DESPACHOS_IMG\",
-              \"sudo docker pull $VENTAS_IMG\",
+              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker pull ${{ env.VENTAS_IMG }}\",
               \"sudo docker rm -f ventas-api || true\",
-              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 $VENTAS_IMG\",
-              \"sudo docker pull $FRONTEND_IMG\",
+              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}\",
+              \"sudo docker pull ${{ env.FRONTEND_IMG }}\",
               \"sudo docker rm -f frontend || true\",
-              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 $FRONTEND_IMG\",
+              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}\",
               \"sudo docker image prune -f\"
             ]"
