@@ -3,8 +3,6 @@ name: CI/CD Pipeline - Build & Deploy to ECR + EC2
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -13,7 +11,7 @@ jobs:
   build-despachos:
     runs-on: ubuntu-latest
     outputs:
-      image-uri: ${{ steps.image.outputs.uri }}
+      image-uri: ${{ steps.set-uri.outputs.uri }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS Credentials
@@ -26,19 +24,20 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Build & Push Despachos
-        id: image
+      - name: Build & Push
+        id: set-uri
         run: |
           REPO_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ secrets.DESPACHOS_ECR_REPO }}
           docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest back-Despachos_SpringBoot/SPRINGBOOT_API/
           docker push $REPO_URI:${{ github.sha }}
           docker push $REPO_URI:latest
+          # IMPORTANTE: El ID del step debe coincidir con el del outputs del job
           echo "uri=$REPO_URI:${{ github.sha }}" >> $GITHUB_OUTPUT
 
   build-ventas:
     runs-on: ubuntu-latest
     outputs:
-      image-uri: ${{ steps.image.outputs.uri }}
+      image-uri: ${{ steps.set-uri.outputs.uri }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS Credentials
@@ -51,8 +50,8 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Build & Push Ventas
-        id: image
+      - name: Build & Push
+        id: set-uri
         run: |
           REPO_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ secrets.VENTAS_ECR_REPO }}
           docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest back-Ventas_SpringBoot/Springboot-API-REST/
@@ -63,7 +62,7 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     outputs:
-      image-uri: ${{ steps.image.outputs.uri }}
+      image-uri: ${{ steps.set-uri.outputs.uri }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS Credentials
@@ -76,8 +75,8 @@ jobs:
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      - name: Build & Push Frontend
-        id: image
+      - name: Build & Push
+        id: set-uri
         run: |
           REPO_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ secrets.FRONTEND_ECR_REPO }}
           docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest -f front_despacho/src/Dockerfile front_despacho/
@@ -88,12 +87,6 @@ jobs:
   deploy-to-ec2:
     needs: [build-despachos, build-ventas, build-frontend]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    env:
-      DESPACHOS_IMG: ${{ needs.build-despachos.outputs.image-uri }}
-      VENTAS_IMG: ${{ needs.build-ventas.outputs.image-uri }}
-      FRONTEND_IMG: ${{ needs.build-frontend.outputs.image-uri }}
-      DEPLOY_METHOD: ${{ secrets.DEPLOY_METHOD }}
     steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -104,8 +97,10 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy via SSH
-        if: env.DEPLOY_METHOD == 'SSH'
         env:
+          D_IMG: ${{ needs.build-despachos.outputs.image-uri }}
+          V_IMG: ${{ needs.build-ventas.outputs.image-uri }}
+          F_IMG: ${{ needs.build-frontend.outputs.image-uri }}
           SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
           USER: ${{ secrets.EC2_USER }}
@@ -115,10 +110,11 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
+          # USAMOS VARIABLES LOCALES DEL STEP PARA PASAR AL SSH
           ssh -i ~/.ssh/id_rsa $USER@$HOST "
-            export DESPACHOS_IMG='${{ env.DESPACHOS_IMG }}'; \
-            export VENTAS_IMG='${{ env.VENTAS_IMG }}'; \
-            export FRONTEND_IMG='${{ env.FRONTEND_IMG }}'; \
+            export DESPACHOS_IMG='$D_IMG'; \
+            export VENTAS_IMG='$V_IMG'; \
+            export FRONTEND_IMG='$F_IMG'; \
             export AWS_REGION='${{ env.AWS_REGION }}'; \
             export AWS_ACCOUNT_ID='${{ secrets.AWS_ACCOUNT_ID }}'; \
             bash -s" << 'EOF'
@@ -139,23 +135,3 @@ jobs:
             
             sudo -E docker image prune -f
           EOF
-
-      - name: Deploy via SSM
-        if: env.DEPLOY_METHOD == 'SSM'
-        run: |
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "commands=[
-              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
-              \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
-              \"sudo docker rm -f despachos-api || true\",
-              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
-              \"sudo docker pull ${{ env.VENTAS_IMG }}\",
-              \"sudo docker rm -f ventas-api || true\",
-              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}\",
-              \"sudo docker pull ${{ env.FRONTEND_IMG }}\",
-              \"sudo docker rm -f frontend || true\",
-              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}\",
-              \"sudo docker image prune -f\"
-            ]"
