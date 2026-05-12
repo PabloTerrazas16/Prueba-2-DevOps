@@ -32,8 +32,7 @@ jobs:
         id: image
         run: |
           REPO_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ secrets.DESPACHOS_ECR_REPO }}
-          docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest \
-            back-Despachos_SpringBoot/SPRINGBOOT_API/
+          docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest back-Despachos_SpringBoot/SPRINGBOOT_API/
           docker push $REPO_URI:${{ github.sha }}
           docker push $REPO_URI:latest
           echo "uri=$REPO_URI:${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -60,8 +59,7 @@ jobs:
         id: image
         run: |
           REPO_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ secrets.VENTAS_ECR_REPO }}
-          docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest \
-            back-Ventas_SpringBoot/Springboot-API-REST/
+          docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest back-Ventas_SpringBoot/Springboot-API-REST/
           docker push $REPO_URI:${{ github.sha }}
           docker push $REPO_URI:latest
           echo "uri=$REPO_URI:${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -88,8 +86,7 @@ jobs:
         id: image
         run: |
           REPO_URI=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ secrets.FRONTEND_ECR_REPO }}
-          docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest \
-            -f front_despacho/src/Dockerfile front_despacho/
+          docker build -t $REPO_URI:${{ github.sha }} -t $REPO_URI:latest -f front_despacho/src/Dockerfile front_despacho/
           docker push $REPO_URI:${{ github.sha }}
           docker push $REPO_URI:latest
           echo "uri=$REPO_URI:${{ github.sha }}" >> $GITHUB_OUTPUT
