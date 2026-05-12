@@ -117,12 +117,16 @@ jobs:
     needs: [build-despachos, build-ventas, build-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     env:
-      DESPACHOS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.DESPACHOS_ECR_REPO }}:${{ github.sha }}
-      VENTAS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.VENTAS_ECR_REPO }}:${{ github.sha }}
-      FRONTEND_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.FRONTEND_ECR_REPO }}:${{ github.sha }}
+      DESPACHOS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ secrets.DESPACHOS_ECR_REPO }}:latest
+      VENTAS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ secrets.VENTAS_ECR_REPO }}:latest
+      FRONTEND_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ secrets.FRONTEND_ECR_REPO }}:latest
       DEPLOY_METHOD: ${{ secrets.DEPLOY_METHOD }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
     steps:
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -144,26 +148,51 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
-
             export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
             export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
             export AWS_SESSION_TOKEN="${{ secrets.AWS_SESSION_TOKEN }}"
 
+            
+
+            # 2. Login
+
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
             sudo docker pull ${{ env.DESPACHOS_IMG }}
             sudo docker rm -f despachos-api || true
-            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}       
+            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}
             sudo docker pull ${{ env.VENTAS_IMG }}
             sudo docker rm -f ventas-api || true
-            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}
+            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}            
             sudo docker pull ${{ env.FRONTEND_IMG }}
             sudo docker rm -f frontend || true
-            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}
-
-            
+            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}     
             sudo docker image prune -f
-
           EOF
+
+
+      - name: Deploy via SSM
+        if: env.DEPLOY_METHOD == 'SSM'
+        run: |
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[
+              \"export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}\",
+              \"export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}\",
+              \"export AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}\",
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
+              \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker rm -f despachos-api || true\",
+              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker pull ${{ env.VENTAS_IMG }}\",
+              \"sudo docker rm -f ventas-api || true\",
+              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}\",
+              \"sudo docker pull ${{ env.FRONTEND_IMG }}\",
+              \"sudo docker rm -f frontend || true\",
+              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}\",
+              \"sudo docker image prune -f\"
+
+            ]"
 
       - name: Deploy via SSM
         if: env.DEPLOY_METHOD == 'SSM'
