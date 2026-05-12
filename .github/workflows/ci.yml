@@ -155,18 +155,18 @@ jobs:
             export AWS_DEFAULT_REGION="${{ env.AWS_REGION }}"
             aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 802319188784.dkr.ecr.us-east-1.amazonaws.com
                  
-            sudo -E docker pull ${{ env.DESPACHOS_IMG }}
+            sudo docker pull ${{ env.DESPACHOS_IMG }}
             echo ${{ env.DESPACHOS_IMG }}
             sudo docker rm -f despachos-api || true
-            sudo -E docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}           
-            sudo -E docker pull ${{ env.VENTAS_IMG }}
+            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}           
+            sudo docker pull ${{ env.VENTAS_IMG }}
             echo ${{ env.VENTAS_IMG }}
             sudo docker rm -f ventas-api || true
-            sudo -E docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}            
-            sudo -E docker pull ${{ env.FRONTEND_IMG }}
+            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}            
+            sudo docker pull ${{ env.FRONTEND_IMG }}
             echo ${{ env.FRONTEND_IMG }}
             sudo docker rm -f frontend || true
-            sudo -E docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}
+            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}
             
             sudo docker image prune -f
           EOF
