@@ -23,11 +23,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build & Push Despachos
         id: image
         run: |
@@ -50,11 +48,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build & Push Ventas
         id: image
         run: |
@@ -77,11 +73,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
       - name: Build & Push Frontend
         id: image
         run: |
@@ -100,6 +94,7 @@ jobs:
       VENTAS_IMG: ${{ needs.build-ventas.outputs.image-uri }}
       FRONTEND_IMG: ${{ needs.build-frontend.outputs.image-uri }}
       DEPLOY_METHOD: ${{ secrets.DEPLOY_METHOD }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -121,14 +116,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/id_rsa $USER@$HOST \
-            "export DESPACHOS_IMG='${{ env.DESPACHOS_IMG }}'; \
-             export VENTAS_IMG='${{ env.VENTAS_IMG }}'; \
-             export FRONTEND_IMG='${{ env.FRONTEND_IMG }}'; \
-             export AWS_REGION='${{ env.AWS_REGION }}'; \
-             export AWS_ACCOUNT_ID='${{ secrets.AWS_ACCOUNT_ID }}'; \
-             bash -s" << 'EOF'
-            
+          ssh -i ~/.ssh/id_rsa $USER@$HOST "
+            export DESPACHOS_IMG='${{ env.DESPACHOS_IMG }}'; \
+            export VENTAS_IMG='${{ env.VENTAS_IMG }}'; \
+            export FRONTEND_IMG='${{ env.FRONTEND_IMG }}'; \
+            export AWS_REGION='${{ env.AWS_REGION }}'; \
+            export AWS_ACCOUNT_ID='${{ secrets.AWS_ACCOUNT_ID }}'; \
+            bash -s" << 'EOF'
             set -e
             aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
             
@@ -154,7 +148,7 @@ jobs:
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters "commands=[
-              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
               \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
               \"sudo docker rm -f despachos-api || true\",
               \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
