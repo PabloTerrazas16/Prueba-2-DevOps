@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Development
+node_modules
+npm-debug.log
+yarn-error.log
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Build
+dist
+build
+.cache
+
+# Documentation
+README.md
+docs
+examples
+
+# Testing
+coverage
+.nyc_output
+__tests__
+*.test.js
+*.spec.js
+
+# CI/CD
+.github
+.gitlab-ci.yml
+Jenkinsfile
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
