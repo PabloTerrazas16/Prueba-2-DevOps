@@ -94,7 +94,6 @@ jobs:
       VENTAS_IMG: ${{ needs.build-ventas.outputs.image-uri }}
       FRONTEND_IMG: ${{ needs.build-frontend.outputs.image-uri }}
       DEPLOY_METHOD: ${{ secrets.DEPLOY_METHOD }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
     steps:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
