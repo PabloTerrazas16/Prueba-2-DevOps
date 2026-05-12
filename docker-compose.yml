@@ -36,7 +36,7 @@ services:
 
   despachos-api:
     build:
-      context: ./back-Despachos_SpringBoot
+      context: ./back-Despachos_SpringBoot/SPRINGBOOT_API
     container_name: despachos-api
     restart: unless-stopped
     environment:
