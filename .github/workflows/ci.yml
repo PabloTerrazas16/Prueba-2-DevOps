@@ -121,8 +121,16 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          ssh -i ~/.ssh/id_rsa $USER@$HOST \
+            "export DESPACHOS_IMG='${{ env.DESPACHOS_IMG }}'; \
+             export VENTAS_IMG='${{ env.VENTAS_IMG }}'; \
+             export FRONTEND_IMG='${{ env.FRONTEND_IMG }}'; \
+             export AWS_REGION='${{ env.AWS_REGION }}'; \
+             export AWS_ACCOUNT_ID='${{ secrets.AWS_ACCOUNT_ID }}'; \
+             bash -s" << 'EOF'
+            
+            set -e
+            aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
             
             sudo docker pull $DESPACHOS_IMG
             sudo docker rm -f despachos-api || true
@@ -147,14 +155,14 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters "commands=[
               \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
-              \"sudo docker pull $DESPACHOS_IMG\",
+              \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
               \"sudo docker rm -f despachos-api || true\",
-              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 $DESPACHOS_IMG\",
-              \"sudo docker pull $VENTAS_IMG\",
+              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker pull ${{ env.VENTAS_IMG }}\",
               \"sudo docker rm -f ventas-api || true\",
-              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 $VENTAS_IMG\",
-              \"sudo docker pull $FRONTEND_IMG\",
+              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}\",
+              \"sudo docker pull ${{ env.FRONTEND_IMG }}\",
               \"sudo docker rm -f frontend || true\",
-              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 $FRONTEND_IMG\",
+              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}\",
               \"sudo docker image prune -f\"
             ]"
