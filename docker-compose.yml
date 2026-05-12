@@ -1,0 +1,67 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: isy-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: ventas
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -prootpass --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  ventas-api:
+    build:
+      context: ./back-Ventas_SpringBoot/Springboot-API-REST
+    container_name: ventas-api
+    restart: unless-stopped
+    environment:
+      DB_ENDPOINT: mysql
+      DB_PORT: 3306
+      DB_NAME: ventas
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  despachos-api:
+    build:
+      context: ./back-Despachos_SpringBoot
+    container_name: despachos-api
+    restart: unless-stopped
+    environment:
+      DB_ENDPOINT: mysql
+      DB_PORT: 3306
+      DB_NAME: despachos
+      DB_USERNAME: root
+      DB_PASSWORD: rootpass
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  front-despacho:
+    build:
+      context: ./front_despacho
+      dockerfile: src/Dockerfile
+    container_name: front-despacho
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - ventas-api
+      - despachos-api
+
+volumes:
+  mysql_data:
