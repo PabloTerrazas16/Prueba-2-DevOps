@@ -62,11 +62,11 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & Push Despachos
+      - name: Build & Push Ventas
         id: image
         run: |
           REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          REPO="${{ secrets.DESPACHOS_ECR_REPO }}"
+          REPO="${{ secrets.VENTAS_ECR_REPO }}"
           REPO_URI="$REGISTRY/$REPO"
           
           echo "URI Final: '$REPO_URI'"
@@ -96,11 +96,11 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & Push Despachos
+      - name: Build & Push Frontend
         id: image
         run: |
           REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          REPO="${{ secrets.DESPACHOS_ECR_REPO }}"
+          REPO="${{ secrets.FRONTEND_ECR_REPO }}"
           REPO_URI="$REGISTRY/$REPO"
           
           echo "URI Final: '$REPO_URI'"
