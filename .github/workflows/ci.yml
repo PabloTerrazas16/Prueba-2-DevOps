@@ -132,43 +132,37 @@ jobs:
             set -e
             aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
             
-            sudo docker pull "$DESPACHOS_IMG"
-            sudo docker rm -f despachos-api || true
-            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 "$DESPACHOS_IMG"
+            sudo -E docker pull "$DESPACHOS_IMG"
+            sudo -E docker rm -f despachos-api || true
+            sudo -E docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 "$DESPACHOS_IMG"
             
-            sudo docker pull "$VENTAS_IMG"
-            sudo docker rm -f ventas-api || true
-            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 "$VENTAS_IMG"
+            sudo -E docker pull "$VENTAS_IMG"
+            sudo -E docker rm -f ventas-api || true
+            sudo -E docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 "$VENTAS_IMG"
             
-            sudo docker pull "$FRONTEND_IMG"
-            sudo docker rm -f frontend || true
-            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 "$FRONTEND_IMG"
+            sudo -E docker pull "$FRONTEND_IMG"
+            sudo -E docker rm -f frontend || true
+            sudo -E docker run -d --name frontend --restart unless-stopped -p 80:80 "$FRONTEND_IMG"
             
-            sudo docker image prune -f
+            sudo -E docker image prune -f
           EOF
 
       - name: Deploy via SSM
         if: env.DEPLOY_METHOD == 'SSM'
         run: |
-          D_IMG="${{ env.DESPACHOS_IMG }}"
-          V_IMG="${{ env.VENTAS_IMG }}"
-          F_IMG="${{ env.FRONTEND_IMG }}"
-          REGION="${{ env.AWS_REGION }}"
-          ACCOUNT="${{ secrets.AWS_ACCOUNT_ID }}"
-
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
             --parameters "commands=[
-              \"aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT.dkr.ecr.$REGION.amazonaws.com\",
-              \"sudo docker pull $D_IMG\",
+              \"aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com\",
+              \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
               \"sudo docker rm -f despachos-api || true\",
-              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 $D_IMG\",
-              \"sudo docker pull $V_IMG\",
+              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker pull ${{ env.VENTAS_IMG }}\",
               \"sudo docker rm -f ventas-api || true\",
-              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 $V_IMG\",
-              \"sudo docker pull $F_IMG\",
+              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}\",
+              \"sudo docker pull ${{ env.FRONTEND_IMG }}\",
               \"sudo docker rm -f frontend || true\",
-              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 $F_IMG\",
+              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}\",
               \"sudo docker image prune -f\"
             ]"
