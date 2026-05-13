@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   mysql:
     image: mysql:8.0
@@ -18,8 +20,10 @@ services:
       start_period: 20s
 
   ventas-api:
+    image: ${VENTAS_IMG:-ventas-api:latest}
     build:
       context: ./back-Ventas_SpringBoot/Springboot-API-REST
+      dockerfile: Dockerfile
     container_name: ventas-api
     restart: unless-stopped
     environment:
@@ -35,8 +39,10 @@ services:
         condition: service_healthy
 
   despachos-api:
+    image: ${DESPACHOS_IMG:-despachos-api:latest}
     build:
       context: ./back-Despachos_SpringBoot/SPRINGBOOT_API
+      dockerfile: Dockerfile
     container_name: despachos-api
     restart: unless-stopped
     environment:
@@ -52,6 +58,7 @@ services:
         condition: service_healthy
 
   front-despacho:
+    image: ${FRONTEND_IMG:-front-despacho:latest}
     build:
       context: ./front_despacho
       dockerfile: src/Dockerfile
