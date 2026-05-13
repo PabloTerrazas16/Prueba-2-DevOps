@@ -102,40 +102,61 @@ jobs:
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
+            set -x
             # Configure AWS credentials
             export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
             export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
             export AWS_SESSION_TOKEN="${{ secrets.AWS_SESSION_TOKEN }}"
             export AWS_DEFAULT_REGION="${{ env.AWS_REGION }}"
             
+            echo "Step 1: Checking docker-compose..."
             if ! command -v docker-compose &> /dev/null; then
-              echo "Installing docker-compose..."
+              echo "Step 2: Installing docker-compose..."
               sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-\$(uname -s)-\$(uname -m)" -o /usr/local/bin/docker-compose
               sudo chmod +x /usr/local/bin/docker-compose
               sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+              docker-compose --version
+            else
+              echo "Step 2: docker-compose already installed"
+              docker-compose --version
             fi
             
-            # Login to ECR
+            echo "Step 3: Logging in to ECR..."
+            echo "Registry: $REGISTRY"
             aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY
             
-            # Navigate to deployment directory
-            cd /opt/app || mkdir -p /opt/app && cd /opt/app
+            echo "Step 4: Setting up deployment directory..."
+            cd /opt/app || (mkdir -p /opt/app && cd /opt/app)
+            pwd
             
-            # Download docker-compose.yml from repository
+            echo "Step 5: Downloading docker-compose.yml..."
             curl -sS https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml
+            ls -la docker-compose.yml
             
-            # Set environment variables for docker-compose
+            echo "Step 6: Setting environment variables..."
             export DESPACHOS_IMG=$DESPACHOS_IMG
             export VENTAS_IMG=$VENTAS_IMG
             export FRONTEND_IMG=$FRONTEND_IMG
+            echo "DESPACHOS_IMG: \$DESPACHOS_IMG"
+            echo "VENTAS_IMG: \$VENTAS_IMG"
+            echo "FRONTEND_IMG: \$FRONTEND_IMG"
             
-            # Update images and deploy
+            echo "Step 7: Pulling latest images..."
             sudo -E docker-compose pull
+            
+            echo "Step 8: Stopping old containers..."
             sudo -E docker-compose down || true
+            
+            echo "Step 9: Starting new containers..."
             sudo -E docker-compose up -d
             
-            # Cleanup old images
+            echo "Step 10: Verifying containers..."
+            docker ps
+            
+            echo "Step 11: Cleaning up..."
             sudo docker image prune -f
+            
+            echo "Deployment completed successfully!"
           EOF
 
       - name: Deploy via SSM
@@ -146,21 +167,38 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters commands='[
               "#!/bin/bash",
-              "set -e",
+              "set -ex",
+              "echo \"Step 1: Setting AWS credentials...\"",
               "export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}",
               "export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}",
               "export AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}",
               "export AWS_DEFAULT_REGION=${{ env.AWS_REGION }}",
+              "echo \"Step 2: Checking/Installing docker-compose...\"",
               "if ! command -v docker-compose &> /dev/null; then curl -L https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose && ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose; fi",
+              "docker-compose --version",
+              "echo \"Step 3: Logging in to ECR...\"",
               "aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${{ env.REGISTRY }}",
-              "mkdir -p /opt/app && cd /opt/app",
-              "curl -sS https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml",
+              "echo \"Step 4: Setting up deployment directory...\"",
+              "mkdir -p /opt/app && cd /opt/app && pwd",
+              "echo \"Step 5: Downloading docker-compose.yml...\"",
+              "curl -sS https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml && ls -la docker-compose.yml",
+              "echo \"Step 6: Setting environment variables...\"",
               "export DESPACHOS_IMG=${{ env.DESPACHOS_IMG }}",
               "export VENTAS_IMG=${{ env.VENTAS_IMG }}",
               "export FRONTEND_IMG=${{ env.FRONTEND_IMG }}",
+              "echo \"DESPACHOS_IMG: $DESPACHOS_IMG\"",
+              "echo \"VENTAS_IMG: $VENTAS_IMG\"",
+              "echo \"FRONTEND_IMG: $FRONTEND_IMG\"",
+              "echo \"Step 7: Pulling latest images...\"",
               "sudo -E docker-compose pull",
+              "echo \"Step 8: Stopping old containers...\"",
               "sudo -E docker-compose down || true",
+              "echo \"Step 9: Starting new containers...\"",
               "sudo -E docker-compose up -d",
-              "sudo docker image prune -f"
+              "echo \"Step 10: Verifying containers...\"",
+              "docker ps",
+              "echo \"Step 11: Cleaning up...\"",
+              "sudo docker image prune -f",
+              "echo \"Deployment completed successfully!\""
             ]' \
             --region ${{ env.AWS_REGION }}
