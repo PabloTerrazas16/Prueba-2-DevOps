@@ -90,6 +90,10 @@ jobs:
           SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
           USER: ${{ secrets.EC2_USER }}
+          DESPACHOS_IMG: ${{ env.DESPACHOS_IMG }}
+          VENTAS_IMG: ${{ env.VENTAS_IMG }}
+          FRONTEND_IMG: ${{ env.FRONTEND_IMG }}
+          REGISTRY: ${{ env.REGISTRY }}
 
         run: |
           mkdir -p ~/.ssh
@@ -97,7 +101,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/id_rsa $USER@$HOST << 'EOF'
+          ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
             # Configure AWS credentials
             export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
             export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
@@ -106,13 +110,13 @@ jobs:
             
             if ! command -v docker-compose &> /dev/null; then
               echo "Installing docker-compose..."
-              sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-\$(uname -s)-\$(uname -m)" -o /usr/local/bin/docker-compose
               sudo chmod +x /usr/local/bin/docker-compose
               sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
             fi
             
             # Login to ECR
-            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${{ env.REGISTRY }}
+            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY
             
             # Navigate to deployment directory
             cd /opt/app || mkdir -p /opt/app && cd /opt/app
@@ -121,9 +125,9 @@ jobs:
             curl -sS https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml
             
             # Set environment variables for docker-compose
-            export DESPACHOS_IMG=${{ env.DESPACHOS_IMG }}
-            export VENTAS_IMG=${{ env.VENTAS_IMG }}
-            export FRONTEND_IMG=${{ env.FRONTEND_IMG }}
+            export DESPACHOS_IMG=$DESPACHOS_IMG
+            export VENTAS_IMG=$VENTAS_IMG
+            export FRONTEND_IMG=$FRONTEND_IMG
             
             # Update images and deploy
             sudo -E docker-compose pull
@@ -140,12 +144,14 @@ jobs:
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
+            --parameters commands='[
+              "#!/bin/bash",
+              "set -e",
               "export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}",
               "export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}",
               "export AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}",
               "export AWS_DEFAULT_REGION=${{ env.AWS_REGION }}",
-              "command -v docker-compose || (curl -L https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose && ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose)",
+              "if ! command -v docker-compose &> /dev/null; then curl -L https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose && ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose; fi",
               "aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${{ env.REGISTRY }}",
               "mkdir -p /opt/app && cd /opt/app",
               "curl -sS https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml",
