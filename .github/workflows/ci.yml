@@ -126,49 +126,72 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
-
+    
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
+      
       - name: Deploy via SSH
         if: env.DEPLOY_METHOD == 'SSH'
         env:
           SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
           USER: ${{ secrets.EC2_USER }}
-
+      
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+      
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
-
-          ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
+      
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa $USER@$HOST << 'EOF'
+      
             export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
             export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-            export AWS_SESSION_TOKEN="${{ secrets.AWS_SESSION_TOKEN }}"
             export AWS_DEFAULT_REGION="${{ env.AWS_REGION }}"
-            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 802319188784.dkr.ecr.us-east-1.amazonaws.com
-                 
+      
+            echo "Verificando credenciales AWS..."
+            aws sts get-caller-identity
+      
+            echo "Login a ECR..."
+            aws ecr get-login-password --region us-east-1 \
+            | sudo docker login \
+                --username AWS \
+                --password-stdin 802319188784.dkr.ecr.us-east-1.amazonaws.com
+      
+            echo "Deploy Despachos..."
             sudo docker pull ${{ env.DESPACHOS_IMG }}
-            echo ${{ env.DESPACHOS_IMG }}
             sudo docker rm -f despachos-api || true
-            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}           
+            sudo docker run -d \
+              --name despachos-api \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              ${{ env.DESPACHOS_IMG }}
+      
+            echo "Deploy Ventas..."
             sudo docker pull ${{ env.VENTAS_IMG }}
-            echo ${{ env.VENTAS_IMG }}
             sudo docker rm -f ventas-api || true
-            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}            
+            sudo docker run -d \
+              --name ventas-api \
+              --restart unless-stopped \
+              -p 8081:8080 \
+              ${{ env.VENTAS_IMG }}
+      
+            echo "Deploy Frontend..."
             sudo docker pull ${{ env.FRONTEND_IMG }}
-            echo ${{ env.FRONTEND_IMG }}
             sudo docker rm -f frontend || true
-            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}
-            
+            sudo docker run -d \
+              --name frontend \
+              --restart unless-stopped \
+              -p 80:80 \
+              ${{ env.FRONTEND_IMG }}
+      
             sudo docker image prune -f
+      
           EOF
 
       - name: Deploy via SSM
