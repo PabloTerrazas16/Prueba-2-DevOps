@@ -10,11 +10,12 @@ env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
 
 jobs:
-  build-and-push:
+  build-despachos:
     runs-on: ubuntu-latest
+    outputs:
+      image-uri: ${{ steps.image.outputs.uri }}
     steps:
       - uses: actions/checkout@v4
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -27,46 +28,97 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Install Docker Compose
+      - name: Build & Push Despachos
+        id: image
         run: |
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-          docker-compose --version
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          REPO="${{ secrets.DESPACHOS_ECR_REPO }}"
+          REPO_URI="$REGISTRY/$REPO"
+          
+          echo "URI Final: '$REPO_URI'"
+          
+          docker build -t "$REPO_URI" -t "$REPO_URI:latest" back-Despachos_SpringBoot/SPRINGBOOT_API/
+          
+          docker push "$REPO_URI"
+          docker push "$REPO_URI:latest"
+          
+          echo "uri=$REPO_URI" >> $GITHUB_OUTPUT
 
-      - name: Build images with Docker Compose
+  build-ventas:
+    runs-on: ubuntu-latest
+    outputs:
+      image-uri: ${{ steps.image.outputs.uri }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Ventas
+        id: image
         run: |
-          docker-compose build
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          REPO="${{ secrets.VENTAS_ECR_REPO }}"
+          REPO_URI="$REGISTRY/$REPO"
+          
+          echo "URI Final: '$REPO_URI'"
+          
+          docker build -t "$REPO_URI" -t "$REPO_URI:latest" back-Despachos_SpringBoot/SPRINGBOOT_API/
+          
+          docker push "$REPO_URI"
+          docker push "$REPO_URI:latest"
+          
+          echo "uri=$REPO_URI" >> $GITHUB_OUTPUT
 
-      - name: Tag and Push images to ECR
-        env:
-          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          DESPACHOS_REPO: ${{ secrets.DESPACHOS_ECR_REPO }}
-          VENTAS_REPO: ${{ secrets.VENTAS_ECR_REPO }}
-          FRONTEND_REPO: ${{ secrets.FRONTEND_ECR_REPO }}
+  build-frontend:
+    runs-on: ubuntu-latest
+    outputs:
+      image-uri: ${{ steps.image.outputs.uri }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push Frontend
+        id: image
         run: |
-          docker tag despachos-api:latest $REGISTRY/$DESPACHOS_REPO:latest
-          docker tag despachos-api:latest $REGISTRY/$DESPACHOS_REPO:${{ github.sha }}
-          docker push $REGISTRY/$DESPACHOS_REPO:latest
-          docker push $REGISTRY/$DESPACHOS_REPO:${{ github.sha }}
-
-          docker tag ventas-api:latest $REGISTRY/$VENTAS_REPO:latest
-          docker tag ventas-api:latest $REGISTRY/$VENTAS_REPO:${{ github.sha }}
-          docker push $REGISTRY/$VENTAS_REPO:latest
-          docker push $REGISTRY/$VENTAS_REPO:${{ github.sha }}
-
-
-          docker tag front-despacho:latest $REGISTRY/$FRONTEND_REPO:latest
-          docker tag front-despacho:latest $REGISTRY/$FRONTEND_REPO:${{ github.sha }}
-          docker push $REGISTRY/$FRONTEND_REPO:latest
-          docker push $REGISTRY/$FRONTEND_REPO:${{ github.sha }}
-
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          REPO="${{ secrets.FRONTEND_ECR_REPO }}"
+          REPO_URI="$REGISTRY/$REPO"
+          
+          echo "URI Final: '$REPO_URI'"
+          
+          docker build -t "$REPO_URI" -t "$REPO_URI:latest" back-Despachos_SpringBoot/SPRINGBOOT_API/
+          
+          docker push "$REPO_URI"
+          docker push "$REPO_URI:latest"
+          
+          echo "uri=$REPO_URI:${{ github.sha }}" >> $GITHUB_OUTPUT
+    
+    
   deploy-to-ec2:
-    needs: [build-and-push]
+    needs: [build-despachos, build-ventas, build-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     env:
-      REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
       DESPACHOS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ secrets.DESPACHOS_ECR_REPO }}:latest
       VENTAS_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ secrets.VENTAS_ECR_REPO }}:latest
       FRONTEND_IMG: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/${{ secrets.FRONTEND_ECR_REPO }}:latest
@@ -74,7 +126,6 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
 
     steps:
-      - uses: actions/checkout@v4
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -90,10 +141,6 @@ jobs:
           SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           HOST: ${{ secrets.EC2_HOST }}
           USER: ${{ secrets.EC2_USER }}
-          DESPACHOS_IMG: ${{ env.DESPACHOS_IMG }}
-          VENTAS_IMG: ${{ env.VENTAS_IMG }}
-          FRONTEND_IMG: ${{ env.FRONTEND_IMG }}
-          REGISTRY: ${{ env.REGISTRY }}
 
         run: |
           mkdir -p ~/.ssh
@@ -102,54 +149,26 @@ jobs:
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/id_rsa $USER@$HOST << EOF
-          set -e
-
-          export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-          export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
-          export AWS_SESSION_TOKEN="${{ secrets.AWS_SESSION_TOKEN }}"
-          export AWS_DEFAULT_REGION="${{ env.AWS_REGION }}"
-          export DESPACHOS_IMG="$DESPACHOS_IMG"
-          export VENTAS_IMG="$VENTAS_IMG"
-          export FRONTEND_IMG="$FRONTEND_IMG"
-          export REGISTRY="$REGISTRY"
-
-          echo "AWS_DEFAULT_REGION=\$AWS_DEFAULT_REGION"
-          echo "REGISTRY=\$REGISTRY"
-          echo "DESPACHOS_IMG=\$DESPACHOS_IMG"
-          echo "VENTAS_IMG=\$VENTAS_IMG"
-          echo "FRONTEND_IMG=\$FRONTEND_IMG"
-
-          if ! command -v docker-compose &> /dev/null; then
-            echo "Installing docker-compose..."
-            sudo curl -fL "https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-\$(uname -s)-\$(uname -m)" -o /usr/local/bin/docker-compose
-            sudo chmod +x /usr/local/bin/docker-compose
-          fi
-
-          docker-compose --version
-
-          echo "Logging into ECR..."
-          aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin "\$REGISTRY"
-
-          echo "Creating deployment directory..."
-          mkdir -p /opt/app
-          cd /opt/app
-
-          echo "Downloading docker-compose.yml..."
-          curl -fSL "https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml" -o docker-compose.yml
-
-          echo "Pulling images..."
-          sudo -E docker-compose pull
-
-          echo "Stopping containers..."
-          sudo docker-compose down || true
-
-          echo "Starting containers..."
-          sudo -E docker-compose up -d
-
-          echo "Listing running containers..."
-          docker ps
-
-          sudo docker image prune -f
+            export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+            export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+            export AWS_SESSION_TOKEN="${{ secrets.AWS_SESSION_TOKEN }}"
+            export AWS_DEFAULT_REGION="${{ env.AWS_REGION }}"
+            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 802319188784.dkr.ecr.us-east-1.amazonaws.com
+                 
+            sudo docker pull ${{ env.DESPACHOS_IMG }}
+            echo ${{ env.DESPACHOS_IMG }}
+            sudo docker rm -f despachos-api || true
+            sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}           
+            sudo docker pull ${{ env.VENTAS_IMG }}
+            echo ${{ env.VENTAS_IMG }}
+            sudo docker rm -f ventas-api || true
+            sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}            
+            sudo docker pull ${{ env.FRONTEND_IMG }}
+            echo ${{ env.FRONTEND_IMG }}
+            sudo docker rm -f frontend || true
+            sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}
+            
+            sudo docker image prune -f
           EOF
 
       - name: Deploy via SSM
@@ -158,26 +177,23 @@ jobs:
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters commands='[
-              "#!/bin/bash",
-              "set -e",
-              "export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}",
-              "export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}",
-              "export AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}",
-              "export AWS_DEFAULT_REGION=${{ env.AWS_REGION }}",
-              "export REGISTRY=${{ env.REGISTRY }}",
-              "export DESPACHOS_IMG=${{ env.DESPACHOS_IMG }}",
-              "export VENTAS_IMG=${{ env.VENTAS_IMG }}",
-              "export FRONTEND_IMG=${{ env.FRONTEND_IMG }}",
-              "if ! command -v docker-compose &> /dev/null; then curl -fL https://github.com/docker/compose/releases/download/v2.20.3/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose; fi",
-              "docker-compose --version",
-              "aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY",
-              "mkdir -p /opt/app && cd /opt/app",
-              "curl -fSL https://raw.githubusercontent.com/${{ github.repository }}/main/docker-compose.yml -o docker-compose.yml",
-              "sudo -E docker-compose pull",
-              "sudo docker-compose down || true",
-              "sudo -E docker-compose up -d",
-              "docker ps",
-              "sudo docker image prune -f"
-            ]' \
-            --region ${{ env.AWS_REGION }}
+            --parameters "commands=[
+              \"export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}\",
+              \"export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}\",
+              \"export AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}\",
+              \"aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 802319188784.dkr.ecr.us-east-1.amazonaws.com\",
+              \"sudo docker pull ${{ env.DESPACHOS_IMG }}\",
+              \"echo ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker rm -f despachos-api || true\",
+              \"sudo docker run -d --name despachos-api --restart unless-stopped -p 8080:8080 ${{ env.DESPACHOS_IMG }}\",
+              \"sudo docker pull ${{ env.VENTAS_IMG }}\",
+              \"echo ${{ env.VENTAS_IMG }}\",
+              \"sudo docker rm -f ventas-api || true\",
+              \"sudo docker run -d --name ventas-api --restart unless-stopped -p 8081:8080 ${{ env.VENTAS_IMG }}\",
+              \"sudo docker pull ${{ env.FRONTEND_IMG }}\",
+              \"echo ${{ env.FRONTEND_IMG }}\",
+              \"sudo docker rm -f frontend || true\",
+              \"sudo docker run -d --name frontend --restart unless-stopped -p 80:80 ${{ env.FRONTEND_IMG }}\",
+              \"sudo docker image prune -f\"
+
+            ]"
